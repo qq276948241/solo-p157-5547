@@ -8,8 +8,9 @@ import PixelButton from '@/components/PixelButton';
 import { useGameStore } from '@/store/useGameStore';
 import { useAudioStore } from '@/store/useAudioStore';
 import { useAudio } from '@/hooks/useAudio';
+import { useGameHistory } from '@/hooks/useGameHistory';
 import type { Direction } from '@/utils/gameUtils';
-import { RefreshCw, Pause, Play, Volume2, VolumeX, Cat, Sparkles } from 'lucide-react';
+import { RefreshCw, Pause, Play, Volume2, VolumeX, Cat, Sparkles, Undo2 } from 'lucide-react';
 import { getLevelConfig } from '@/data/levelConfig';
 import { getWallpaper } from '@/data/wallpapers';
 
@@ -35,12 +36,19 @@ export default function GamePage() {
     playUnlockSound,
     playLevelUpSound,
     playGameOverSound,
+    playUndoSound,
     ensureAudio,
   } = useAudio();
 
+  const { pushSnapshot, undo, clear, canUndo, undoCount, remaining } = useGameHistory();
+
+  const [isUndoing, setIsUndoing] = React.useState(false);
+  const undoingTimer = useRef<number | null>(null);
+
   useEffect(() => {
     initGame();
-  }, [initGame]);
+    clear();
+  }, [initGame, clear]);
 
   useEffect(() => {
     if (newlyUnlocked !== null && newlyUnlocked >= 1) {
@@ -60,28 +68,54 @@ export default function GamePage() {
   useEffect(() => {
     if (!prevLevelRef.current && isLevelTransition) {
       playLevelUpSound();
+      clear();
       const t = setTimeout(() => {
         clearLevelTransition();
       }, 1500);
       return () => clearTimeout(t);
     }
     prevLevelRef.current = isLevelTransition;
-  }, [isLevelTransition, playLevelUpSound, clearLevelTransition]);
+  }, [isLevelTransition, playLevelUpSound, clearLevelTransition, clear]);
 
   const onMove = useCallback(
     (direction: Direction) => {
       ensureAudio();
+      pushSnapshot();
       const { moved, merged } = handleMoveStore(direction);
-      if (moved) {
-        if (merged) {
-          playMergeSound(3);
-        } else {
-          playMoveSound();
-        }
+      if (!moved) {
+        undo();
+        return;
+      }
+      if (merged) {
+        playMergeSound(3);
+      } else {
+        playMoveSound();
       }
     },
-    [handleMoveStore, playMergeSound, playMoveSound, ensureAudio]
+    [handleMoveStore, playMergeSound, playMoveSound, ensureAudio, pushSnapshot, undo]
   );
+
+  const handleUndo = useCallback(() => {
+    ensureAudio();
+    const ok = undo();
+    if (!ok) return;
+    playUndoSound();
+    setIsUndoing(true);
+    if (undoingTimer.current !== null) window.clearTimeout(undoingTimer.current);
+    undoingTimer.current = window.setTimeout(() => setIsUndoing(false), 280);
+  }, [undo, playUndoSound, ensureAudio]);
+
+  useEffect(() => {
+    return () => {
+      if (undoingTimer.current !== null) window.clearTimeout(undoingTimer.current);
+    };
+  }, []);
+
+  const handleNewGame = useCallback(() => {
+    ensureAudio();
+    clear();
+    initGame();
+  }, [ensureAudio, clear, initGame]);
 
   const levelConfig = getLevelConfig(currentLevel);
   const wallpaper = getWallpaper(levelConfig.wallpaperIndex);
@@ -89,6 +123,19 @@ export default function GamePage() {
 
   return (
     <Background>
+      <style>{`
+        @keyframes cat-rewind {
+          0% { transform: scale(1) rotate(0deg); filter: hue-rotate(0deg) brightness(1); }
+          25% { transform: scale(0.88) rotate(-3deg); filter: hue-rotate(-20deg) brightness(1.15); }
+          50% { transform: scale(0.82) rotate(0deg); filter: hue-rotate(0deg) brightness(0.9); }
+          75% { transform: scale(0.94) rotate(2deg); filter: hue-rotate(10deg) brightness(1.08); }
+          100% { transform: scale(1) rotate(0deg); filter: hue-rotate(0deg) brightness(1); }
+        }
+        .cat-undoing > [class*="relative"] > [class*="absolute"] [style*="left"] {
+          animation: cat-rewind 0.28s cubic-bezier(.4,0,.2,1);
+        }
+      `}</style>
+
       <div className="min-h-screen w-full px-4 py-5 md:px-8 lg:px-10 py-6">
         <header className="max-w-[1280px] mx-auto mb-4 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
@@ -113,7 +160,18 @@ export default function GamePage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <PixelButton
+              size="sm"
+              color="gray"
+              onClick={handleUndo}
+              disabled={!canUndo || isPaused || isLevelTransition || isUndoing}
+              title={`撤回上一步（剩余 ${remaining}/3）`}
+            >
+              <Undo2 size={14} />
+              <span className="ml-1 hidden sm:inline">撤回</span>
+              <span className="ml-1 font-pixel text-[9px] opacity-80">({remaining})</span>
+            </PixelButton>
             <PixelButton
               size="sm"
               color="purple"
@@ -145,10 +203,7 @@ export default function GamePage() {
             <PixelButton
               size="sm"
               color="green"
-              onClick={() => {
-                ensureAudio();
-                initGame();
-              }}
+              onClick={handleNewGame}
               title="重新开始"
             >
               <RefreshCw size={14} />
@@ -178,7 +233,12 @@ export default function GamePage() {
                 <span>📍 {levelConfig.title}</span>
               </div>
             </div>
-            <Board onMove={onMove} />
+            <div
+              key={undoCount}
+              className={isUndoing ? 'cat-undoing' : ''}
+            >
+              <Board onMove={onMove} />
+            </div>
             <ProgressBar />
           </div>
 
@@ -188,7 +248,7 @@ export default function GamePage() {
         </main>
 
         <footer className="max-w-[1280px] mx-auto mt-6 text-center font-pixel text-[10px] text-amber-800/70">
-          ⌨️ 键盘操作：方向键 / WASD 滑动 · 🖱️ 鼠标拖拽棋盘滑动 · 📱 触屏滑动
+          ⌨️ 键盘操作：方向键 / WASD 滑动 · 🖱️ 鼠标拖拽棋盘滑动 · 📱 触屏滑动 · ↩️ 可撤回3步
         </footer>
       </div>
     </Background>

@@ -87,6 +87,50 @@ export function useAudio() {
     });
   }, [sfxEnabled, playTone]);
 
+  const playUndoSound = useCallback(() => {
+    if (!sfxEnabled) return;
+    try {
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') ctx.resume();
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+
+      const now = ctx.currentTime;
+      osc.frequency.setValueAtTime(700, now);
+      osc.frequency.linearRampToValueAtTime(180, now + 0.35);
+
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.18, now + 0.01);
+      gain.gain.linearRampToValueAtTime(0.12, now + 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.4);
+
+      setTimeout(() => {
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'triangle';
+        const n2 = ctx.currentTime;
+        osc2.frequency.setValueAtTime(300, n2);
+        osc2.frequency.linearRampToValueAtTime(120, n2 + 0.15);
+        gain2.gain.setValueAtTime(0, n2);
+        gain2.gain.linearRampToValueAtTime(0.1, n2 + 0.01);
+        gain2.gain.exponentialRampToValueAtTime(0.001, n2 + 0.18);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(n2);
+        osc2.stop(n2 + 0.2);
+      }, 80);
+    } catch {
+      /* ignore */
+    }
+  }, [sfxEnabled]);
+
   const startBGM = useCallback(() => {
     if (!bgmEnabled) return;
     try {
@@ -187,6 +231,7 @@ export function useAudio() {
     playUnlockSound,
     playLevelUpSound,
     playGameOverSound,
+    playUndoSound,
     startBGM,
     stopBGM,
     ensureAudio,
