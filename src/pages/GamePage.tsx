@@ -57,7 +57,7 @@ export default function GamePage() {
   } = useAudio();
 
   const snapshotProvider = useMemo(
-    (): { getSnapshot: () => GameSnapshot; applySnapshot: (s: GameSnapshot) => void } => ({
+    (): { getSnapshot: () => GameSnapshot; applySnapshot: (s: GameSnapshot) => boolean } => ({
       getSnapshot,
       applySnapshot,
     }),
@@ -111,10 +111,13 @@ export default function GamePage() {
     (direction: Direction) => {
       ensureAudio();
       pushSnapshot();
-      const { moved, merged } = handleMove(direction);
+      const { moved, merged, levelPassed } = handleMove(direction);
       if (!moved) {
         dropLast();
         return;
+      }
+      if (levelPassed) {
+        clear();
       }
       if (merged) {
         playMergeSound(3);
@@ -122,7 +125,7 @@ export default function GamePage() {
         playMoveSound();
       }
     },
-    [handleMove, pushSnapshot, dropLast, playMergeSound, playMoveSound, ensureAudio]
+    [handleMove, pushSnapshot, dropLast, clear, playMergeSound, playMoveSound, ensureAudio]
   );
 
   const handleUndo = useCallback(() => {

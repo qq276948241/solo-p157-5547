@@ -4,7 +4,7 @@ const MAX_HISTORY = 3;
 
 export interface SnapshotProvider<TSnapshot> {
   getSnapshot: () => TSnapshot;
-  applySnapshot: (snap: TSnapshot) => void;
+  applySnapshot: (snap: TSnapshot) => boolean;
 }
 
 export function useGameHistory<TSnapshot>(provider: SnapshotProvider<TSnapshot>) {
@@ -24,7 +24,12 @@ export function useGameHistory<TSnapshot>(provider: SnapshotProvider<TSnapshot>)
   const undo = useCallback((): boolean => {
     if (historyRef.current.length === 0) return false;
     const snap = historyRef.current.pop()!;
-    applySnapshot(snap);
+    const applied = applySnapshot(snap);
+    if (!applied) {
+      historyRef.current = [];
+      setCanUndo(false);
+      return false;
+    }
     setUndoCount((c) => c + 1);
     setCanUndo(historyRef.current.length > 0);
     return true;

@@ -14,6 +14,7 @@ interface GameState {
   isLevelTransition: boolean;
   newlyUnlocked: number | null;
   nextTileId: number;
+  generation: number;
   _nextIdInternal: { current: number };
 
   initGame: () => void;
@@ -22,6 +23,7 @@ interface GameState {
   resetGame: () => void;
   clearLevelTransition: () => void;
   clearNewlyUnlocked: () => void;
+  bumpGeneration: () => void;
 }
 
 const idRef = { current: 1 };
@@ -47,6 +49,7 @@ export const useGameStore = create<GameState>()(
       isLevelTransition: false,
       newlyUnlocked: null,
       nextTileId: 1,
+      generation: 1,
       _nextIdInternal: idRef,
 
       initGame: () => {
@@ -62,6 +65,7 @@ export const useGameStore = create<GameState>()(
           isLevelTransition: false,
           newlyUnlocked: null,
           nextTileId: idRef.current,
+          generation: (get().generation ?? 0) + 1,
         });
       },
 
@@ -85,6 +89,10 @@ export const useGameStore = create<GameState>()(
 
       clearNewlyUnlocked: () => {
         set({ newlyUnlocked: null });
+      },
+
+      bumpGeneration: () => {
+        set((s) => ({ generation: (s.generation ?? 0) + 1 }));
       },
     }),
     {

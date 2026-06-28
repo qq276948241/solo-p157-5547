@@ -17,6 +17,7 @@ export interface GameSnapshot {
   currentLevelScore: number;
   currentLevel: number;
   isGameOver: boolean;
+  generation: number;
 }
 
 export function useGameLogic() {
@@ -36,6 +37,7 @@ export function useGameLogic() {
   const clearLevelTransition = useGameStore((s) => s.clearLevelTransition);
   const clearNewlyUnlocked = useGameStore((s) => s.clearNewlyUnlocked);
   const patch = useGameStore((s) => s.patch);
+  const bumpGeneration = useGameStore((s) => s.bumpGeneration);
 
   const getSnapshot = useCallback((): GameSnapshot => {
     const s = useGameStore.getState();
@@ -45,10 +47,21 @@ export function useGameLogic() {
       currentLevelScore: s.currentLevelScore,
       currentLevel: s.currentLevel,
       isGameOver: s.isGameOver,
+      generation: s.generation,
     };
   }, []);
 
-  const applySnapshot = useCallback((snap: GameSnapshot) => {
+  const applySnapshot = useCallback((snap: GameSnapshot): boolean => {
+    const s = useGameStore.getState();
+
+    if (snap.generation !== s.generation) {
+      return false;
+    }
+
+    if (s.isLevelTransition) {
+      return false;
+    }
+
     useGameStore.setState({
       board: snap.board,
       score: snap.score,
@@ -56,9 +69,9 @@ export function useGameLogic() {
       currentLevel: snap.currentLevel,
       isGameOver: snap.isGameOver,
       isPaused: false,
-      isLevelTransition: false,
-      newlyUnlocked: null,
     });
+
+    return true;
   }, []);
 
   const handleMove = useCallback((direction: Direction): MoveResult => {
@@ -112,6 +125,7 @@ export function useGameLogic() {
     }
 
     const gameOver = !canMove(newBoard);
+    const nextGeneration = isTransition ? state.generation + 1 : state.generation;
 
     patch({
       board: newBoard,
@@ -124,6 +138,7 @@ export function useGameLogic() {
       unlockedCats: newUnlockedList,
       newlyUnlocked: newlyUnlockedLevel,
       nextTileId: idRef.current,
+      generation: nextGeneration,
     });
 
     return {
@@ -151,6 +166,7 @@ export function useGameLogic() {
     togglePause,
     clearLevelTransition,
     clearNewlyUnlocked,
+    bumpGeneration,
 
     getSnapshot,
     applySnapshot,
