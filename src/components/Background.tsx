@@ -1,10 +1,13 @@
 import React from 'react';
-import { useGameStore } from '@/store/useGameStore';
 import { getWallpaper } from '@/data/wallpapers';
 import { getLevelConfig } from '@/data/levelConfig';
 
-export default function Background({ children }: { children: React.ReactNode }) {
-  const currentLevel = useGameStore((s) => s.currentLevel);
+interface BackgroundProps {
+  currentLevel: number;
+  children: React.ReactNode;
+}
+
+export default function Background({ currentLevel, children }: BackgroundProps) {
   const config = getLevelConfig(currentLevel);
   const wp = getWallpaper(config.wallpaperIndex);
 

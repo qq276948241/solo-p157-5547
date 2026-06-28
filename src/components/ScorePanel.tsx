@@ -1,6 +1,11 @@
 import React from 'react';
-import { useGameStore } from '@/store/useGameStore';
 import { Trophy, Star, Zap } from 'lucide-react';
+
+interface ScorePanelProps {
+  score: number;
+  bestScore: number;
+  currentLevel: number;
+}
 
 function StatCard({
   icon,
@@ -31,11 +36,7 @@ function StatCard({
   );
 }
 
-export default function ScorePanel() {
-  const score = useGameStore((s) => s.score);
-  const bestScore = useGameStore((s) => s.bestScore);
-  const currentLevel = useGameStore((s) => s.currentLevel);
-
+export default function ScorePanel({ score, bestScore, currentLevel }: ScorePanelProps) {
   return (
     <div className="flex gap-2 w-full">
       <StatCard

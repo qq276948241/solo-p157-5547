@@ -1,44 +1,44 @@
-import React, { useEffect, useRef } from 'react';
-import { useGameStore } from '@/store/useGameStore';
-import { Direction, BOARD_SIZE, Board as BoardType } from '@/utils/gameUtils';
+import React, { useEffect, useMemo, useRef } from 'react';
+import type { Direction, Board as BoardType } from '@/utils/gameUtils';
+import { BOARD_SIZE } from '@/utils/gameUtils';
 import Tile from './Tile';
 
 const CELL_SIZE = 96;
 const GAP = 8;
 
 interface BoardProps {
+  board: BoardType;
+  isPaused: boolean;
+  isGameOver: boolean;
+  isLevelTransition: boolean;
   onMove: (direction: Direction) => void;
 }
 
-export default function Board({ onMove }: BoardProps) {
-  const board = useGameStore((s) => s.board);
-  const isPaused = useGameStore((s) => s.isPaused);
-  const isGameOver = useGameStore((s) => s.isGameOver);
-  const isLevelTransition = useGameStore((s) => s.isLevelTransition);
+const KEY_MAP: Record<string, Direction> = {
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  w: 'up', W: 'up',
+  s: 'down', S: 'down',
+  a: 'left', A: 'left',
+  d: 'right', D: 'right',
+};
 
+export default function Board({ board, isPaused, isGameOver, isLevelTransition, onMove }: BoardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const blocked = isPaused || isGameOver || isLevelTransition;
 
-  const boardSize = CELL_SIZE * BOARD_SIZE + GAP * (BOARD_SIZE + 1);
+  const boardSize = useMemo(
+    () => CELL_SIZE * BOARD_SIZE + GAP * (BOARD_SIZE + 1),
+    []
+  );
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (isPaused || isGameOver || isLevelTransition) return;
-      const map: Record<string, Direction> = {
-        ArrowUp: 'up',
-        ArrowDown: 'down',
-        ArrowLeft: 'left',
-        ArrowRight: 'right',
-        w: 'up',
-        W: 'up',
-        s: 'down',
-        S: 'down',
-        a: 'left',
-        A: 'left',
-        d: 'right',
-        D: 'right',
-      };
-      const dir = map[e.key];
+      if (blocked) return;
+      const dir = KEY_MAP[e.key];
       if (dir) {
         e.preventDefault();
         onMove(dir);
@@ -46,10 +46,19 @@ export default function Board({ onMove }: BoardProps) {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onMove, isPaused, isGameOver, isLevelTransition]);
+  }, [onMove, blocked]);
+
+  const resolveDirection = (dx: number, dy: number): Direction | null => {
+    const threshold = 20;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    if (Math.max(absX, absY) < threshold) return null;
+    if (absX > absY) return dx > 0 ? 'right' : 'left';
+    return dy > 0 ? 'down' : 'up';
+  };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (isPaused || isGameOver || isLevelTransition) return;
+    if (blocked) return;
     const t = e.touches[0];
     touchStart.current = { x: t.clientX, y: t.clientY };
   };
@@ -57,45 +66,26 @@ export default function Board({ onMove }: BoardProps) {
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!touchStart.current) return;
     const t = e.changedTouches[0];
-    const dx = t.clientX - touchStart.current.x;
-    const dy = t.clientY - touchStart.current.y;
-    const absX = Math.abs(dx);
-    const absY = Math.abs(dy);
-    const threshold = 20;
-    if (Math.max(absX, absY) < threshold) return;
-    let dir: Direction;
-    if (absX > absY) {
-      dir = dx > 0 ? 'right' : 'left';
-    } else {
-      dir = dy > 0 ? 'down' : 'up';
-    }
-    onMove(dir);
+    const dir = resolveDirection(
+      t.clientX - touchStart.current.x,
+      t.clientY - touchStart.current.y
+    );
+    if (dir) onMove(dir);
     touchStart.current = null;
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (isPaused || isGameOver || isLevelTransition) return;
+    if (blocked) return;
     touchStart.current = { x: e.clientX, y: e.clientY };
   };
 
   const handleMouseUp = (e: React.MouseEvent) => {
     if (!touchStart.current) return;
-    const dx = e.clientX - touchStart.current.x;
-    const dy = e.clientY - touchStart.current.y;
-    const absX = Math.abs(dx);
-    const absY = Math.abs(dy);
-    const threshold = 20;
-    if (Math.max(absX, absY) < threshold) {
-      touchStart.current = null;
-      return;
-    }
-    let dir: Direction;
-    if (absX > absY) {
-      dir = dx > 0 ? 'right' : 'left';
-    } else {
-      dir = dy > 0 ? 'down' : 'up';
-    }
-    onMove(dir);
+    const dir = resolveDirection(
+      e.clientX - touchStart.current.x,
+      e.clientY - touchStart.current.y
+    );
+    if (dir) onMove(dir);
     touchStart.current = null;
   };
 
@@ -117,23 +107,8 @@ export default function Board({ onMove }: BoardProps) {
       onMouseUp={handleMouseUp}
       onMouseLeave={() => (touchStart.current = null)}
     >
-      <div className="absolute inset-0 grid grid-cols-4 grid-rows-4 p-2" style={{ gap: GAP }}>
-        {Array.from({ length: BOARD_SIZE * BOARD_SIZE }).map((_, i) => (
-          <div
-            key={i}
-            className="rounded-md"
-            style={{
-              backgroundColor: 'rgba(255, 248, 231, 0.5)',
-              border: '2px solid rgba(93, 64, 55, 0.25)',
-            }}
-          />
-        ))}
-      </div>
-      <div className="absolute inset-0 p-2">
-        <div className="relative" style={{ width: CELL_SIZE * BOARD_SIZE, height: CELL_SIZE * BOARD_SIZE }}>
-          <TilesLayer board={board} />
-        </div>
-      </div>
+      <BackgroundGrid />
+      <TilesLayer board={board} />
 
       {isPaused && (
         <Overlay>
@@ -157,17 +132,40 @@ export default function Board({ onMove }: BoardProps) {
   );
 }
 
+function BackgroundGrid() {
+  return (
+    <div className="absolute inset-0 grid grid-cols-4 grid-rows-4 p-2" style={{ gap: GAP }}>
+      {Array.from({ length: BOARD_SIZE * BOARD_SIZE }).map((_, i) => (
+        <div
+          key={i}
+          className="rounded-md"
+          style={{
+            backgroundColor: 'rgba(255, 248, 231, 0.5)',
+            border: '2px solid rgba(93, 64, 55, 0.25)',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function TilesLayer({ board }: { board: BoardType }) {
   const tiles: React.ReactNode[] = [];
   for (let r = 0; r < BOARD_SIZE; r++) {
-    for (let c =0; c < BOARD_SIZE; c++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
       const tile = board[r][c];
       if (tile) {
         tiles.push(<Tile key={tile.id} tile={tile} cellSize={CELL_SIZE} gap={GAP} />);
       }
     }
   }
-  return <>{tiles}</>;
+  return (
+    <div className="absolute inset-0 p-2">
+      <div className="relative" style={{ width: CELL_SIZE * BOARD_SIZE, height: CELL_SIZE * BOARD_SIZE }}>
+        {tiles}
+      </div>
+    </div>
+  );
 }
 
 function Overlay({ children }: { children: React.ReactNode }) {

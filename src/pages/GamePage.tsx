@@ -1,29 +1,45 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Board from '@/components/Board';
 import Collection from '@/components/Collection';
 import ProgressBar from '@/components/ProgressBar';
 import ScorePanel from '@/components/ScorePanel';
 import Background from '@/components/Background';
 import PixelButton from '@/components/PixelButton';
-import { useGameStore } from '@/store/useGameStore';
 import { useAudioStore } from '@/store/useAudioStore';
-import { useAudio } from '@/hooks/useAudio';
+import { useGameLogic, type GameSnapshot } from '@/hooks/useGameLogic';
 import { useGameHistory } from '@/hooks/useGameHistory';
+import { useAudio } from '@/hooks/useAudio';
 import type { Direction } from '@/utils/gameUtils';
 import { RefreshCw, Pause, Play, Volume2, VolumeX, Cat, Sparkles, Undo2 } from 'lucide-react';
 import { getLevelConfig } from '@/data/levelConfig';
 import { getWallpaper } from '@/data/wallpapers';
 
+const UNDO_ANIM_MS = 280;
+const NEWLY_UNLOCKED_MS = 3000;
+const LEVEL_TRANSITION_MS = 1500;
+
 export default function GamePage() {
-  const initGame = useGameStore((s) => s.initGame);
-  const handleMoveStore = useGameStore((s) => s.handleMove);
-  const togglePause = useGameStore((s) => s.togglePause);
-  const isPaused = useGameStore((s) => s.isPaused);
-  const isLevelTransition = useGameStore((s) => s.isLevelTransition);
-  const clearLevelTransition = useGameStore((s) => s.clearLevelTransition);
-  const currentLevel = useGameStore((s) => s.currentLevel);
-  const newlyUnlocked = useGameStore((s) => s.newlyUnlocked);
-  const isGameOver = useGameStore((s) => s.isGameOver);
+  const {
+    board,
+    score,
+    bestScore,
+    currentLevel,
+    currentLevelScore,
+    unlockedCats,
+    isGameOver,
+    isPaused,
+    isLevelTransition,
+    newlyUnlocked,
+
+    initGame,
+    handleMove,
+    togglePause,
+    clearLevelTransition,
+    clearNewlyUnlocked,
+
+    getSnapshot,
+    applySnapshot,
+  } = useGameLogic();
 
   const sfxEnabled = useAudioStore((s) => s.sfxEnabled);
   const bgmEnabled = useAudioStore((s) => s.bgmEnabled);
@@ -40,10 +56,23 @@ export default function GamePage() {
     ensureAudio,
   } = useAudio();
 
-  const { pushSnapshot, undo, clear, canUndo, undoCount, remaining } = useGameHistory();
+  const snapshotProvider = useMemo(
+    (): { getSnapshot: () => GameSnapshot; applySnapshot: (s: GameSnapshot) => void } => ({
+      getSnapshot,
+      applySnapshot,
+    }),
+    [getSnapshot, applySnapshot]
+  );
 
-  const [isUndoing, setIsUndoing] = React.useState(false);
+  const { pushSnapshot, undo, dropLast, clear, canUndo, undoCount, remaining } =
+    useGameHistory(snapshotProvider);
+
+  const [isUndoing, setIsUndoing] = useState(false);
   const undoingTimer = useRef<number | null>(null);
+
+  const wasGameOverRef = useRef(isGameOver);
+  const wasTransitionRef = useRef(isLevelTransition);
+  const prevNewlyUnlockedRef = useRef(newlyUnlocked);
 
   useEffect(() => {
     initGame();
@@ -51,39 +80,40 @@ export default function GamePage() {
   }, [initGame, clear]);
 
   useEffect(() => {
-    if (newlyUnlocked !== null && newlyUnlocked >= 1) {
+    if (newlyUnlocked !== null && newlyUnlocked !== prevNewlyUnlockedRef.current) {
       playUnlockSound();
+      const t = window.setTimeout(() => clearNewlyUnlocked(), NEWLY_UNLOCKED_MS);
+      prevNewlyUnlockedRef.current = newlyUnlocked;
+      return () => window.clearTimeout(t);
     }
-  }, [newlyUnlocked, playUnlockSound]);
+    prevNewlyUnlockedRef.current = newlyUnlocked;
+  }, [newlyUnlocked, playUnlockSound, clearNewlyUnlocked]);
 
-  const prevGameOverRef = useRef(isGameOver);
   useEffect(() => {
-    if (!prevGameOverRef.current && isGameOver) {
+    if (!wasGameOverRef.current && isGameOver) {
       playGameOverSound();
     }
-    prevGameOverRef.current = isGameOver;
+    wasGameOverRef.current = isGameOver;
   }, [isGameOver, playGameOverSound]);
 
-  const prevLevelRef = useRef(isLevelTransition);
   useEffect(() => {
-    if (!prevLevelRef.current && isLevelTransition) {
+    if (!wasTransitionRef.current && isLevelTransition) {
       playLevelUpSound();
       clear();
-      const t = setTimeout(() => {
-        clearLevelTransition();
-      }, 1500);
-      return () => clearTimeout(t);
+      const t = window.setTimeout(() => clearLevelTransition(), LEVEL_TRANSITION_MS);
+      wasTransitionRef.current = isLevelTransition;
+      return () => window.clearTimeout(t);
     }
-    prevLevelRef.current = isLevelTransition;
+    wasTransitionRef.current = isLevelTransition;
   }, [isLevelTransition, playLevelUpSound, clearLevelTransition, clear]);
 
   const onMove = useCallback(
     (direction: Direction) => {
       ensureAudio();
       pushSnapshot();
-      const { moved, merged } = handleMoveStore(direction);
+      const { moved, merged } = handleMove(direction);
       if (!moved) {
-        undo();
+        dropLast();
         return;
       }
       if (merged) {
@@ -92,7 +122,7 @@ export default function GamePage() {
         playMoveSound();
       }
     },
-    [handleMoveStore, playMergeSound, playMoveSound, ensureAudio, pushSnapshot, undo]
+    [handleMove, pushSnapshot, dropLast, playMergeSound, playMoveSound, ensureAudio]
   );
 
   const handleUndo = useCallback(() => {
@@ -102,7 +132,7 @@ export default function GamePage() {
     playUndoSound();
     setIsUndoing(true);
     if (undoingTimer.current !== null) window.clearTimeout(undoingTimer.current);
-    undoingTimer.current = window.setTimeout(() => setIsUndoing(false), 280);
+    undoingTimer.current = window.setTimeout(() => setIsUndoing(false), UNDO_ANIM_MS);
   }, [undo, playUndoSound, ensureAudio]);
 
   useEffect(() => {
@@ -122,7 +152,7 @@ export default function GamePage() {
   const isDarkWallpaper = wallpaper.gradient.includes('1A237E');
 
   return (
-    <Background>
+    <Background currentLevel={currentLevel}>
       <style>{`
         @keyframes cat-rewind {
           0% { transform: scale(1) rotate(0deg); filter: hue-rotate(0deg) brightness(1); }
@@ -213,7 +243,7 @@ export default function GamePage() {
         </header>
 
         <div className="max-w-[1280px] mx-auto">
-          <ScorePanel />
+          <ScorePanel score={score} bestScore={bestScore} currentLevel={currentLevel} />
         </div>
 
         <main className="max-w-[1280px] mx-auto mt-4 grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5 lg:gap-6">
@@ -237,13 +267,19 @@ export default function GamePage() {
               key={undoCount}
               className={isUndoing ? 'cat-undoing' : ''}
             >
-              <Board onMove={onMove} />
+              <Board
+                board={board}
+                isPaused={isPaused}
+                isGameOver={isGameOver}
+                isLevelTransition={isLevelTransition}
+                onMove={onMove}
+              />
             </div>
-            <ProgressBar />
+            <ProgressBar currentLevel={currentLevel} currentLevelScore={currentLevelScore} />
           </div>
 
           <div className="w-full lg:sticky lg:top-4 lg:self-start">
-            <Collection />
+            <Collection unlockedCats={unlockedCats} newlyUnlocked={newlyUnlocked} />
           </div>
         </main>
 

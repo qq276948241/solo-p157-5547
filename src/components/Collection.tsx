@@ -1,21 +1,14 @@
 import React from 'react';
 import { twMerge } from 'tailwind-merge';
-import { useGameStore } from '@/store/useGameStore';
 import { CAT_LEVELS, getCatLevel } from '@/data/catLevels';
 import { Lock } from 'lucide-react';
 
-export default function Collection() {
-  const unlockedCats = useGameStore((s) => s.unlockedCats);
-  const newlyUnlocked = useGameStore((s) => s.newlyUnlocked);
-  const clearNewlyUnlocked = useGameStore((s) => s.clearNewlyUnlocked);
+interface CollectionProps {
+  unlockedCats: number[];
+  newlyUnlocked: number | null;
+}
 
-  React.useEffect(() => {
-    if (newlyUnlocked !== null) {
-      const t = setTimeout(() => clearNewlyUnlocked(), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [newlyUnlocked, clearNewlyUnlocked]);
-
+export default function Collection({ unlockedCats, newlyUnlocked }: CollectionProps) {
   return (
     <div
       className="flex flex-col rounded-lg p-4 h-full"

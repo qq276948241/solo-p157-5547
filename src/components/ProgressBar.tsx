@@ -1,12 +1,13 @@
 import React from 'react';
-import { useGameStore } from '@/store/useGameStore';
 import { getLevelConfig, TOTAL_LEVELS } from '@/data/levelConfig';
 
-export default function ProgressBar() {
-  const currentLevel = useGameStore((s) => s.currentLevel);
-  const currentLevelScore = useGameStore((s) => s.currentLevelScore);
-  const config = getLevelConfig(currentLevel);
+interface ProgressBarProps {
+  currentLevel: number;
+  currentLevelScore: number;
+}
 
+export default function ProgressBar({ currentLevel, currentLevelScore }: ProgressBarProps) {
+  const config = getLevelConfig(currentLevel);
   const percent = Math.min(100, (currentLevelScore / config.targetScore) * 100);
   const filled = Math.floor(percent / 5);
 

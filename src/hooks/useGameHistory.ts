@@ -1,56 +1,39 @@
 import { useCallback, useRef, useState } from 'react';
-import { useGameStore } from '@/store/useGameStore';
-import { Board, cloneBoard } from '@/utils/gameUtils';
 
 const MAX_HISTORY = 3;
 
-interface Snapshot {
-  board: Board;
-  score: number;
-  currentLevelScore: number;
-  currentLevel: number;
-  isGameOver: boolean;
+export interface SnapshotProvider<TSnapshot> {
+  getSnapshot: () => TSnapshot;
+  applySnapshot: (snap: TSnapshot) => void;
 }
 
-export function useGameHistory() {
-  const historyRef = useRef<Snapshot[]>([]);
+export function useGameHistory<TSnapshot>(provider: SnapshotProvider<TSnapshot>) {
+  const { getSnapshot, applySnapshot } = provider;
+  const historyRef = useRef<TSnapshot[]>([]);
   const [canUndo, setCanUndo] = useState(false);
   const [undoCount, setUndoCount] = useState(0);
 
   const pushSnapshot = useCallback(() => {
-    const state = useGameStore.getState();
-    const snapshot: Snapshot = {
-      board: cloneBoard(state.board),
-      score: state.score,
-      currentLevelScore: state.currentLevelScore,
-      currentLevel: state.currentLevel,
-      isGameOver: state.isGameOver,
-    };
-    historyRef.current.push(snapshot);
+    historyRef.current.push(getSnapshot());
     if (historyRef.current.length > MAX_HISTORY) {
       historyRef.current.shift();
     }
     setCanUndo(historyRef.current.length > 0);
-  }, []);
+  }, [getSnapshot]);
 
   const undo = useCallback((): boolean => {
     if (historyRef.current.length === 0) return false;
     const snap = historyRef.current.pop()!;
-
-    useGameStore.setState({
-      board: snap.board,
-      score: snap.score,
-      currentLevelScore: snap.currentLevelScore,
-      currentLevel: snap.currentLevel,
-      isGameOver: snap.isGameOver,
-      isPaused: false,
-      isLevelTransition: false,
-      newlyUnlocked: null,
-    });
-
+    applySnapshot(snap);
     setUndoCount((c) => c + 1);
     setCanUndo(historyRef.current.length > 0);
     return true;
+  }, [applySnapshot]);
+
+  const dropLast = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+    historyRef.current.pop();
+    setCanUndo(historyRef.current.length > 0);
   }, []);
 
   const clear = useCallback(() => {
@@ -61,9 +44,12 @@ export function useGameHistory() {
   return {
     pushSnapshot,
     undo,
+    dropLast,
     clear,
     canUndo,
     undoCount,
-    remaining: historyRef.current.length,
+    get remaining() {
+      return historyRef.current.length;
+    },
   };
 }
